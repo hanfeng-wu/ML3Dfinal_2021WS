@@ -1,0 +1,2 @@
+https://shapenet.cs.stanford.edu/shrec17/
+https://shapenet.cs.stanford.edu/shrec16/
