@@ -63,11 +63,9 @@ class RGBD2Mesh:
                 j3 = j+1
                 i4 = i+1
                 j4 = j+1
-                try:
-                    if (isValid(positions, i1*self.width+j1, i2*self.width+j2, i3*self.width+j3, edgeThreshold)):
+                
+                if (isValid(positions, i1*self.width+j1, i2*self.width+j2, i3*self.width+j3, edgeThreshold)):
                         surfaces.append(Surface(3, np.array([i1*self.width+j1, i2*self.width+j2, i3*self.width+j3])))
-                except(IndexError):
-                    print(f'i:{i}, j:{j}, width:{self.width}, height:{self.height}, {len(positions)}')
                     
                 if (isValid(positions, i2*self.width+j2, i4*self.width+j4, i3*self.width+j3, edgeThreshold)):
                     surfaces.append(Surface(3, np.array([i2*self.width+j2, i4*self.width+j4, i3*self.width+j3])))
@@ -105,7 +103,7 @@ class RGBD2Mesh:
         cX = self.depthIntrinsics[0][2]
         cY = self.depthIntrinsics[1][2]
         depthExtrinsicsInv = np.linalg.inv(self.depthExtrinsics)
-
+        indexinf = []
         positions = np.zeros((self.height * self.width, 4))
         num = self.height * self.width
         #trajectoryInv = np.linalg.inv(self.trajectory)
@@ -113,14 +111,21 @@ class RGBD2Mesh:
             depth = self.depthMap[i]
             ux = int(i % self.width)
             uy = int(i / self.width)
-            if (depth==-float('inf')):
-                positions[i] = np.array([-float('inf'),-float('inf'),-float('inf'),-float('inf')])
+            #if (depth==-float('inf')):
+            if (depth > 1000):
+                indexinf.append(i)
+                #positions[i] = np.array([-float('inf'),-float('inf'),-float('inf'),-float('inf')])
             else:
                 x = (ux - cX) / fX
                 y = (uy - cY) / fY
                 worldSpacePosition = depthExtrinsicsInv @ np.array([depth*x, depth*y, depth, 1.0])
                 worldSpacePosition /= worldSpacePosition[3]
                 positions[i] = worldSpacePosition
+        mean = np.mean(positions, axis=(0)) * (self.width*self.height/(self.width*self.height-len(indexinf)))
+        print(mean.shape)
+        positions -= mean     
+        indexinf = np.array(indexinf)
+        positions[indexinf] =  np.array([-float('inf'),-float('inf'),-float('inf'),-float('inf')])
         self.writemesh(positions, './testmesh.off')        
 
 
