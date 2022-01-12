@@ -86,6 +86,7 @@ class RGBD2Mesh:
                 y = (uy - cY) / fY
                 worldSpacePosition = depthExtrinsicsInv @ np.array([depth*x, depth*y, depth, 1.0])
                 worldSpacePosition /= worldSpacePosition[3]
+                worldSpacePosition = np.array((worldSpacePosition[0],worldSpacePosition[2],-worldSpacePosition[1]))
                 positions.append(worldSpacePosition)
         positions = np.array(positions)
         self.writemesh(positions, './testmesh.off')        
