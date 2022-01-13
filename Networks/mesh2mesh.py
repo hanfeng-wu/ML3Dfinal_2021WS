@@ -1,89 +1,164 @@
 from numpy.lib.arraypad import pad
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
 
 
-class ThreeDEPN(nn.Module):
-    def __init__(self):
+class TNet(nn.Module):
+    def __init__(self, k):
         super().__init__()
-
-        self.num_features = 80
-
-        # TODO: 4 Encoder layers
-        self.encoder_1 = nn.Sequential(
-            nn.Conv3d(in_channels=2, out_channels=self.num_features, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(negative_slope=0.2),
-        )
-        self.encoder_2 = nn.Sequential(
-            nn.Conv3d(in_channels=self.num_features, out_channels=2*self.num_features, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm3d(2*self.num_features),
-            nn.LeakyReLU(negative_slope=0.2),
-         )
-        self.encoder_3 = nn.Sequential(
-            nn.Conv3d(in_channels=2*self.num_features, out_channels=4*self.num_features, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm3d(4*self.num_features),
-            nn.LeakyReLU(negative_slope=0.2),
-        )
-        self.encoder_4 = nn.Sequential(
-            nn.Conv3d(in_channels=4*self.num_features, out_channels=8*self.num_features, kernel_size=4, stride=1),
-            nn.BatchNorm3d(8*self.num_features),
-            nn.LeakyReLU(negative_slope=0.2),
+        # TODO Add layers: Convolutional k->64, 64->128, 128->1024 with corresponding batch norms and ReLU
+        # TODO Add layers: Linear 1024->512, 512->256, 256->k^2 with corresponding batch norms and ReLU
+        self.convlayers = nn.Sequential(
+            torch.nn.Conv1d(in_channels=k, out_channels=64, kernel_size=1),
+            torch.nn.BatchNorm1d(64),
+            torch.nn.ReLU(),
+            torch.nn.Conv1d(in_channels=64, out_channels=128, kernel_size=1),
+            torch.nn.BatchNorm1d(128),
+            torch.nn.ReLU(),
+            torch.nn.Conv1d(in_channels=128, out_channels=1024, kernel_size=1),
+            torch.nn.BatchNorm1d(1024),
+            torch.nn.ReLU(),
         )
 
-        # TODO: 2 Bottleneck layers
-
-        self.bottleneck = nn.Sequential(
-            nn.Linear(640,640),
-            nn.ReLU(),
-            nn.Linear(640,640),
-            nn.ReLU(),
+        self.linearlayers = nn.Sequential(
+            torch.nn.Linear(1024,512),
+            torch.nn.BatchNorm1d(512),
+            torch.nn.ReLU(),
+            torch.nn.Linear(512,256),
+            torch.nn.BatchNorm1d(256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256,k*k),
         )
 
-        # TODO: 4 Decoder layers
 
-        self.decoder_1 = nn.Sequential(
-            nn.ConvTranspose3d(in_channels=2*8*self.num_features, out_channels=4*self.num_features, kernel_size=4, stride=1),
-            nn.BatchNorm3d(4*self.num_features),
-            nn.ReLU()
-        )
-        self.decoder_2 = nn.Sequential(
-            nn.ConvTranspose3d(in_channels=2*4*self.num_features, out_channels=2*self.num_features, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm3d(2*self.num_features),
-            nn.ReLU()
-        )
-        self.decoder_3 = nn.Sequential(
-            nn.ConvTranspose3d(in_channels=2*2*self.num_features, out_channels=self.num_features, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm3d(self.num_features),
-            nn.ReLU()
-        )
-        self.decoder_4 = nn.Sequential(
-            nn.ConvTranspose3d(in_channels=2*1*self.num_features, out_channels=1, kernel_size=4, stride=2, padding=1)
-        )
+        self.register_buffer('identity', torch.from_numpy(np.eye(k).flatten().astype(np.float32)).view(1, k ** 2))
+        self.k = k
 
     def forward(self, x):
-        b = x.shape[0]
-        # Encode
-        # TODO: Pass x though encoder while keeping the intermediate outputs for the skip connections
-        # Reshape and apply bottleneck layers
-        x_e1 = self.encoder_1(x)
-        x_e2 = self.encoder_2(x_e1)
-        x_e3 = self.encoder_3(x_e2)
-        x_e4 = self.encoder_4(x_e3)
-        ####################
-        x = x_e4.view(b, -1)
-        x = self.bottleneck(x)
-        x = x.view(x.shape[0], x.shape[1], 1, 1, 1)
+        b = x.shape
+        original_x = x
 
-        # Decode
-        # TODO: Pass x through the decoder, applying the skip connections in the process
-        x_d1 = self.decoder_1(torch.cat([x,x_e4],dim=1))
-        x_d2 = self.decoder_2(torch.cat([x_d1,x_e3],dim=1))
-        x_d3 = self.decoder_3(torch.cat([x_d2,x_e2],dim=1))
-        x = self.decoder_4(torch.cat([x_d3,x_e1],dim=1))
-
+        # TODO Pass input through layers, applying the same max operation as in PointNetEncoder
+        # TODO No batch norm and relu after the last Linear layer
+        x = self.convlayers(x)
+        x = F.max_pool1d(x,kernel_size=1024)
         
-        x = torch.squeeze(x, dim=1)
-        # TODO: Log scaling
-        x = torch.log(torch.abs(x)+1)
-
+        x = self.linearlayers(x.view(b[0],1024))
+        # Adding the identity to constrain the feature transformation matrix to be close to orthogonal matrix
+        identity = self.identity.repeat(x.shape[0], 1)
+        x = x + identity
+        x = x.view(-1, self.k, self.k)
         return x
+
+
+class PointNetEncoder(nn.Module):
+    def __init__(self, return_point_features=False):
+        super().__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(3,64,kernel_size=1),
+            torch.nn.BatchNorm1d(64),
+            torch.nn.ReLU(),
+            nn.Conv1d(64,64,kernel_size=1),
+            torch.nn.BatchNorm1d(64),
+            torch.nn.ReLU(),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(64,128,kernel_size=1),
+            torch.nn.BatchNorm1d(128),
+            torch.nn.ReLU(),
+            nn.Conv1d(128,1024,kernel_size=1),
+            torch.nn.BatchNorm1d(1024),
+            torch.nn.ReLU(),
+        )      
+
+        self.input_transform_net = TNet(k=3)
+        self.feature_transform_net = TNet(k=64)
+
+        self.return_point_features = return_point_features
+
+    def forward(self, x):
+        num_points = x.shape[2]
+
+        input_transform = self.input_transform_net(x)
+        x = torch.bmm(x.transpose(2, 1), input_transform).transpose(2, 1)
+        
+
+        x = self.conv1(x)
+
+        feature_transform = self.feature_transform_net(x)
+        x = torch.bmm(x.transpose(2, 1), feature_transform).transpose(2, 1)
+        point_features = x
+
+        # TODO: Layers 2 and 3: 64->128, 128->1024
+        x = self.conv2(x)
+
+        # This is the symmetric max operation
+        x = torch.max(x, 2, keepdim=True)[0]
+        x = x.view(-1, 1024)
+
+        if self.return_point_features:
+            x = x.view(-1, 1024, 1).repeat(1, 1, num_points)
+            return torch.cat([x, point_features], dim=1)
+        else:
+            return x
+
+
+class PointNetClassification(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self.encoder = PointNetEncoder(return_point_features=False)
+        # TODO Add Linear layers, batch norms, dropout with p=0.3, and ReLU
+        # Batch Norms and ReLUs are used after all but the last layer
+        # Dropout is used only directly after the second Linear layer
+        # The last Linear layer reduces the number of feature channels to num_classes (=k in the architecture visualization)
+        self.layers = nn.Sequential(
+            torch.nn.Linear(1024,512),
+            torch.nn.BatchNorm1d(512),
+            torch.nn.ReLU(),
+            torch.nn.Linear(512,256),
+            nn.Dropout(p=0.3),
+            torch.nn.BatchNorm1d(256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256,13),
+
+        )
+        
+    def forward(self, x):
+        x = self.encoder(x)
+        # TODO Pass output of encoder through your layers
+        x = self.layers(x)
+        return x
+
+
+class PointNetSegmentation(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self.num_classes = num_classes
+        self.encoder = PointNetEncoder(return_point_features=True)
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(1088,512,kernel_size=1),
+            torch.nn.BatchNorm1d(512),
+            torch.nn.ReLU(),
+            nn.Conv1d(512,256,kernel_size=1),
+            torch.nn.BatchNorm1d(256),
+            torch.nn.ReLU(),
+            nn.Conv1d(256,128,kernel_size=1),
+            torch.nn.BatchNorm1d(128),
+            torch.nn.ReLU(),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(128,128,kernel_size=1),
+            torch.nn.BatchNorm1d(128),
+            torch.nn.ReLU(),
+            nn.Conv1d(128,num_classes,kernel_size=1)
+        )   
+        # TODO: Define convolutions, batch norms, and ReLU
+
+    def forward(self, x):
+        x = self.encoder(x)
+        # TODO: Pass x through all layers, no batch norm or ReLU after the last conv layer
+        x = self.conv2(self.conv1(x))
+        x = x.transpose(2, 1).contiguous()
+        return x            
