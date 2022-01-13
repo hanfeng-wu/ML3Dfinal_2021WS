@@ -89,7 +89,9 @@ class RGBD2Mesh:
                 worldSpacePosition = np.array((worldSpacePosition[0],worldSpacePosition[2],-worldSpacePosition[1]))
                 positions.append(worldSpacePosition)
         positions = np.array(positions)
-        self.writemesh(positions, './testmesh.off')        
+        #self.writemesh(positions, './testmesh.off')
+        return positions  
+  
 
 
 

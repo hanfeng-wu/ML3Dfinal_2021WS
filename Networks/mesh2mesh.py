@@ -3,10 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.nn.modules.conv import Conv1d
 
 
 class TNet(nn.Module):
-    def __init__(self, k):
+    def __init__(self, k, numpoints=1024):
         super().__init__()
         # TODO Add layers: Convolutional k->64, 64->128, 128->1024 with corresponding batch norms and ReLU
         # TODO Add layers: Linear 1024->512, 512->256, 256->k^2 with corresponding batch norms and ReLU
@@ -35,6 +36,7 @@ class TNet(nn.Module):
 
         self.register_buffer('identity', torch.from_numpy(np.eye(k).flatten().astype(np.float32)).view(1, k ** 2))
         self.k = k
+        self.numpoints = numpoints
 
     def forward(self, x):
         b = x.shape
@@ -43,7 +45,8 @@ class TNet(nn.Module):
         # TODO Pass input through layers, applying the same max operation as in PointNetEncoder
         # TODO No batch norm and relu after the last Linear layer
         x = self.convlayers(x)
-        x = F.max_pool1d(x,kernel_size=1024)
+        x = F.max_pool1d(x,kernel_size=self.numpoints)
+
         
         x = self.linearlayers(x.view(b[0],1024))
         # Adding the identity to constrain the feature transformation matrix to be close to orthogonal matrix
@@ -54,7 +57,7 @@ class TNet(nn.Module):
 
 
 class PointNetEncoder(nn.Module):
-    def __init__(self, return_point_features=False):
+    def __init__(self, return_point_features=False, numpoints=1024):
         super().__init__()
         self.conv1 = nn.Sequential(
             nn.Conv1d(3,64,kernel_size=1),
@@ -73,8 +76,8 @@ class PointNetEncoder(nn.Module):
             torch.nn.ReLU(),
         )      
 
-        self.input_transform_net = TNet(k=3)
-        self.feature_transform_net = TNet(k=64)
+        self.input_transform_net = TNet(k=3, numpoints=numpoints)
+        self.feature_transform_net = TNet(k=64, numpoints=numpoints)
 
         self.return_point_features = return_point_features
 
@@ -103,6 +106,31 @@ class PointNetEncoder(nn.Module):
             return torch.cat([x, point_features], dim=1)
         else:
             return x
+
+
+class PointNetDecoder(nn.Module):
+    def __init__(self, numpoints=1024):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(1024,1024),
+            torch.nn.BatchNorm1d(1024),
+            torch.nn.ReLU(),
+            nn.Linear(1024,1024),
+            torch.nn.BatchNorm1d(1024),
+            torch.nn.ReLU(),
+            nn.Linear(1024,numpoints*3)
+        )
+        self.numpoints = numpoints
+
+    def forward(self, x):
+        bs = x.shape[0]
+        x = self.fc(x)
+        x = x.view(bs,3,self.numpoints)
+        return x
+
+
+
+
 
 
 class PointNetClassification(nn.Module):
