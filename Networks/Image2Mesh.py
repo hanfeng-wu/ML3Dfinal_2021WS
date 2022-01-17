@@ -52,93 +52,21 @@ class Image2Voxel(pl.LightningModule):
 
     def __init__(self): # Training and logging
         super().__init__()
-
-        # self.batch_size = batch_size
-        # self.learning_rate = 0.01
-
         self.model = Image2Voxel.Network()
-        # self.current_device = device
         torch.cuda.empty_cache()
 
     def forward(self, x_in):
         x = self.model(x_in)     
         return x
         
-    def general_step(self, batch, batch_idx, mode):
-        images, targets = batch
+    def save(self, path):
+        """
+        Save model with its parameters to the given path. Conventionally the
+        path should end with "*.model".
 
-        preds = self.forward(images)
-
-        loss = nn.L1Loss()(preds, targets)
-        
-        temp_preds = preds.clone()
-        temp_preds[preds<0.5] = 0
-        temp_preds[preds>=0.5] = 1
-        
-        n_correct = (targets == temp_preds).sum()
-        return loss, n_correct
-
-    def general_end(self, outputs, mode):
-        avg_loss = torch.stack([x[mode + '_loss'] for x in outputs]).mean()
-        total_correct = torch.stack(
-            [x[mode + '_n_correct'] for x in outputs]).sum().cpu().numpy()
-        acc = total_correct / len(self.data[mode])
-        return avg_loss, acc
-
-    def training_step(self, batch, batch_idx):
-        loss, n_correct = self.general_step(batch, batch_idx, "train")
-        tensorboard_logs = {'loss': loss}
-        return {'loss': loss, 'train_n_correct': n_correct, 'log': tensorboard_logs}
-
-    # def validation_step(self, batch, batch_idx):
-    #     loss, n_correct = self.general_step(batch, batch_idx, "val")
-    #     return {'val_loss': loss, 'val_n_correct': n_correct}
-
-    # def test_step(self, batch, batch_idx):
-    #     loss, n_correct = self.general_step(batch, batch_idx, "test")
-    #     return {'test_loss': loss, 'test_n_correct': n_correct}
-
-    # def validation_end(self, outputs):
-    #     avg_loss, acc = self.general_end(outputs, "val")
-    #     print("Val-Acc={}".format(acc))
-    #     tensorboard_logs = {'val_loss': avg_loss, 'val_acc': acc}
-    #     return {'val_loss': avg_loss, 'val_acc': acc, 'log': tensorboard_logs}
-
-    def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['train'], shuffle=True, batch_size=self.batch_size)
-
-    # def val_dataloader(self):
-    #     return torch.utils.data.DataLoader(self.data['val'], batch_size=self.batch_size)
-
-    # def test_dataloader(self):
-    #     return torch.utils.data.DataLoader(self.data['test'], batch_size=self.batch_size)
-
-    def configure_optimizers(self):
-        optim = torch.optim.Adam(self.model.parameters(), self.learning_rate)
-        return optim
-
-    def getAcc(self, loader):
-        self.eval()
-
-        self = self.to(self.current_device)
-        scores = []
-        labels = []
-
-        for batch in loader:
-            X, y = batch
-            X = X.to(self.current_device)
-            X = X.unsqueeze(0)
-            score = self.forward(X)
-            score[score<0.5] = 0
-            score[score>=0.5] = 1
-            scores.append(score)
-            labels.append(y)
-
-        scores = np.concatenate(scores, axis=0)
-        labels = np.concatenate(labels, axis=0)
-
-        preds = scores.argmax(axis=1)
-        acc = (labels == preds).mean()
-        return preds, acc
-
+        Inputs:
+        - path: path string
+        """
+        print('Saving model... %s' % path)
+        torch.save(self, path)
 

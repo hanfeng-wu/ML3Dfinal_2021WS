@@ -38,21 +38,12 @@ class Image2MeshDataLoader():
         image = resize(image,(self.image_size, self.image_size))[:,:,:3] 
         image = torch.from_numpy(np.array(image,dtype=np.uint8))
         image = image.permute(2,0,1)
+
         voxel = sio.loadmat(label)['input'].astype(np.uint8)[0]
         mesh = trimesh.voxel.ops.matrix_to_marching_cubes(voxel)
         label = self._point2vox_(mesh.sample(self.sample_rate),self.voxel_dims)
         label = torch.from_numpy(label.astype(np.uint8))
         return image.float(),label.long()
-
-    @staticmethod
-    def move_batch_to_device(batch, device):
-        """
-        Utility method for moving all elements of the batch to a device
-        :return: None, modifies batch inplace
-        """
-        batch[0].to(device)
-        batch[1].to(device)
-
 
     def _point2vox_(self,points,dims=(32,32,32)):
         w,h,d = dims
