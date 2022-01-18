@@ -29,42 +29,54 @@ class VoxelAutoencoder(pl.LightningModule):
             self._conv_encoded_dim = layer_3_out_dim
 
             # TODO: add first max pool layer if dim is 256
-
+            fc_features = layer_3_out_dim * layer_3_out_dim * layer_3_out_dim * 64
             self._encoder = nn.Sequential(
                 torch.nn.Conv3d(in_channels=1, out_channels=8, kernel_size=kernel_size, stride=stride, padding=1),
-                #torch.nn.BatchNorm3d(8),
+                torch.nn.BatchNorm3d(8),
                 nn.ReLU(),
                 torch.nn.Conv3d(in_channels=8, out_channels=16, kernel_size=kernel_size, stride=stride, padding=1),
-               # torch.nn.BatchNorm3d(16),
+                torch.nn.BatchNorm3d(16),
                 nn.ReLU(),
                 nn.MaxPool3d(2),
                 torch.nn.Conv3d(in_channels=16, out_channels=32, kernel_size=kernel_size, stride=stride, padding=1),
-                #torch.nn.BatchNorm3d(32),
+                torch.nn.BatchNorm3d(32),
                 nn.ReLU(),
                 torch.nn.Conv3d(in_channels=32, out_channels=64, kernel_size=kernel_size, stride=stride, padding=1),
-                #torch.nn.BatchNorm3d(64),
+                torch.nn.BatchNorm3d(64),
                 nn.ReLU(),
                 
                 nn.Flatten(),
-                nn.Linear(layer_3_out_dim * layer_3_out_dim * layer_3_out_dim * 64, latent_dim),
+                nn.Linear(fc_features, fc_features),
+                #nn.BatchNorm1d(fc_features),
+                nn.ReLU(),
+                nn.Linear(fc_features, latent_dim),
+                #nn.BatchNorm1d(latent_dim),
                 nn.ReLU(),
             )
             self._decoder_fc = nn.Sequential(
-                nn.Linear(latent_dim, layer_3_out_dim * layer_3_out_dim * layer_3_out_dim * 64),
+                nn.Linear(latent_dim, fc_features),
+                #nn.BatchNorm1d(fc_features),
+                nn.ReLU(),
+                nn.Linear(fc_features, fc_features),
+                #nn.BatchNorm1d(fc_features),
                 nn.ReLU(),
             )
             self._decoder = nn.Sequential(
                 nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=kernel_size, stride=stride, padding=1),
-                #nn.BatchNorm3d(32),
+                nn.BatchNorm3d(32),
                 nn.ReLU(),
                 nn.ConvTranspose3d(in_channels=32, out_channels=16, kernel_size=kernel_size, stride=stride, padding=1),
-                #nn.BatchNorm3d(16),
+                nn.BatchNorm3d(16),
                 nn.ReLU(),
-                nn.Upsample(scale_factor=2),
+                nn.Upsample(scale_factor=2, mode='nearest'),
                 nn.ConvTranspose3d(in_channels=16, out_channels=8, kernel_size=kernel_size, stride=stride, padding=1),
-                #nn.BatchNorm3d(8),
-                nn.Sigmoid(),
-                nn.ConvTranspose3d(in_channels=8, out_channels=1, kernel_size=kernel_size, stride=stride, padding=1),
+                nn.BatchNorm3d(8),
+                nn.ReLU(),
+                nn.ConvTranspose3d(in_channels=8, out_channels=8, kernel_size=kernel_size, stride=stride, padding=1),
+                nn.BatchNorm3d(8),
+                nn.ReLU(),
+                nn.Conv3d(in_channels=8, out_channels=1, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm3d(1),
                 nn.Sigmoid()
             )
 
@@ -94,7 +106,6 @@ class VoxelAutoencoder(pl.LightningModule):
     def general_step(self, batch, batch_idx, mode: str):
         x = batch
         y = self(x)
-        print(y)
 
         # TODO: cross entropy loss
         loss = nn.L1Loss()(x, y)
@@ -112,13 +123,13 @@ class VoxelAutoencoder(pl.LightningModule):
         loss = self.general_step(batch, batch_idx, "test")
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['train'], shuffle=True, batch_size=1)
+        return torch.utils.data.DataLoader(self.data['train'], shuffle=True, batch_size=16)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['val'], batch_size=1)
+        return torch.utils.data.DataLoader(self.data['val'], batch_size=16)
 
     def test_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['test'], batch_size=1)
+        return torch.utils.data.DataLoader(self.data['test'], batch_size=16)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters(), 0.01)
