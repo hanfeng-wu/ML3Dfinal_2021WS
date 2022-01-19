@@ -133,10 +133,9 @@ class VoxelAutoencoder(pl.LightningModule):
         return x
         
     def general_step(self, batch, batch_idx, mode: str):
-        x = batch
-        y = self(x)
-        # TODO: cross entropy loss
-        loss = nn.L1Loss()(x, y)
+        target = batch
+        prediction = self(target)
+        loss = nn.BCELoss()(prediction, target)
         self.log(f"{mode}_loss", loss, on_step=True)
         return loss
 
