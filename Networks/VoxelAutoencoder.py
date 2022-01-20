@@ -10,101 +10,92 @@ import numpy as np
 class VoxelAutoencoder(pl.LightningModule):
     
     class Network(nn.Module):
+        """
+        Voxel autoencoder model based on the architecture in this paper: https://arxiv.org/pdf/1608.04236.pdf
+        """
+
         def __init__(self, voxel_dimension: int):
             """
             voxel_dimension: side length of the input voxels
             """
             super().__init__()
 
-            latent_dim = int(1024)
-
-            kernel_size = 4
-            stride = 2
-            padding = 1
-
-            layer_0_out_dim = self._conv_layer_output_dim(input_dim=voxel_dimension, kernel_size=6, stride=4, padding=1)
-            layer_0_out_dim /= 2
-            layer_1_out_dim = self._conv_layer_output_dim(input_dim=layer_0_out_dim, kernel_size=4, stride=2, padding=1)
-            layer_1_out_dim /= 2
-            layer_2_out_dim = self._conv_layer_output_dim(input_dim=layer_1_out_dim, kernel_size=3, stride=1, padding=1)
-            layer_3_out_dim = self._conv_layer_output_dim(input_dim=layer_2_out_dim, kernel_size=3, stride=1, padding=1)
-            layer_3_out_dim /= 2
-
-            self._conv_encoded_dim = int(layer_3_out_dim)
-
-
-            # TODO: add first max pool layer if dim is 256
-            fc_features = int(layer_3_out_dim * layer_3_out_dim * layer_3_out_dim * 256)
+            activation = nn.ELU()
 
             self._encoder = nn.Sequential(
-                torch.nn.Conv3d(in_channels=1, out_channels=32, kernel_size=6, stride=4, padding=1),
-                torch.nn.BatchNorm3d(32),
-                nn.ReLU(),
+                torch.nn.Conv3d(in_channels=1, out_channels=2, kernel_size=4, stride=2, padding=1),
+                torch.nn.BatchNorm3d(2),
+                activation,
 
-                nn.MaxPool3d(kernel_size=2),
+                torch.nn.Conv3d(in_channels=2, out_channels=4, kernel_size=4, stride=2, padding=1),
+                torch.nn.BatchNorm3d(4),
+                activation,
+
+                # 32
+
+                torch.nn.Conv3d(in_channels=4, out_channels=8, kernel_size=3, stride=1, padding=1),
+                torch.nn.BatchNorm3d(8),
+                activation,
+
+                torch.nn.Conv3d(in_channels=8, out_channels=16, kernel_size=4, stride=2, padding=1),
+                torch.nn.BatchNorm3d(16),
+                activation,
+
+                # 16
+
+                torch.nn.Conv3d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1),
+                torch.nn.BatchNorm3d(32),
+                activation,
 
                 torch.nn.Conv3d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(64),
-                nn.ReLU(),
+                activation,
 
-                nn.MaxPool3d(kernel_size=2),
-
-                torch.nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
-                torch.nn.BatchNorm3d(128),
-                nn.ReLU(),
-
-                torch.nn.Conv3d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1),
-                torch.nn.BatchNorm3d(256),
-                nn.ReLU(),
-
-                nn.MaxPool3d(kernel_size=2),
+                # 8
                 
                 nn.Flatten(),
-                nn.Linear(fc_features, fc_features),
-                nn.BatchNorm1d(fc_features),
-                nn.ReLU(),
-                nn.Linear(fc_features, latent_dim),
-                nn.BatchNorm1d(latent_dim),
-                nn.ReLU(),
+                # nn.Linear(fc_features, fc_features),
+                # nn.BatchNorm1d(fc_features),
+                # nn.ReLU(),
+                nn.Linear(8*8*8*64, 8*8*8*4),
+                nn.BatchNorm1d(8*8*8*4),
+                activation,
+                nn.Linear(8*8*8*4, 512),
             )
             self._decoder_fc = nn.Sequential(
-                nn.Linear(latent_dim, fc_features),
-                nn.BatchNorm1d(fc_features),
-                nn.ReLU(),
-                nn.Linear(fc_features, fc_features),
-                nn.BatchNorm1d(fc_features),
-                nn.ReLU(),
+                nn.Linear(512, 8*8*8*4),
+                nn.Linear(8*8*8*4, 8*8*8*64),
+                nn.BatchNorm1d(8*8*8*64),
+                activation,
             )
             self._decoder = nn.Sequential(
-                torch.nn.ConvTranspose3d(in_channels=256, out_channels=256, kernel_size=4, stride=2, padding=1),
-                torch.nn.BatchNorm3d(256),
-                nn.ReLU(),
+                # 8
 
-                torch.nn.Conv3d(in_channels=256, out_channels=128, kernel_size=3, stride=1, padding=1),
-                torch.nn.BatchNorm3d(128),
-                nn.ReLU(),
-
-                torch.nn.Conv3d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=1),
-                torch.nn.BatchNorm3d(64),
-                nn.ReLU(),
-
-                torch.nn.ConvTranspose3d(in_channels=64, out_channels=64, kernel_size=4, stride=2, padding=1),
-                torch.nn.BatchNorm3d(64),
-                nn.ReLU(),
-
-                nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=4, stride=2, padding=1),
-                nn.BatchNorm3d(32),
-                nn.ReLU(),
-
-                torch.nn.ConvTranspose3d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1),
+                torch.nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(32),
-                nn.ReLU(),
+                activation,
 
-                nn.ConvTranspose3d(in_channels=32, out_channels=1, kernel_size=6, stride=4, padding=1),
-                nn.BatchNorm3d(1),
-                nn.ReLU(),
+                # 16
 
-                nn.ConvTranspose3d(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2),
+                torch.nn.ConvTranspose3d(in_channels=32, out_channels=16, kernel_size=3, stride=1, padding=1),
+                torch.nn.BatchNorm3d(16),
+                activation,
+
+                torch.nn.ConvTranspose3d(in_channels=16, out_channels=8, kernel_size=4, stride=2, padding=1),
+                torch.nn.BatchNorm3d(8),
+                activation,
+
+                # 32
+
+                torch.nn.ConvTranspose3d(in_channels=8, out_channels=4, kernel_size=3, stride=1, padding=1),
+                torch.nn.BatchNorm3d(4),
+                activation,
+
+                nn.ConvTranspose3d(in_channels=4, out_channels=2, kernel_size=4, stride=2, padding=1),
+                nn.BatchNorm3d(2),
+                activation,
+
+                nn.ConvTranspose3d(in_channels=2, out_channels=1, kernel_size=4, stride=2, padding=1),
                 nn.BatchNorm3d(1),
                 nn.Sigmoid()
             )
@@ -115,7 +106,7 @@ class VoxelAutoencoder(pl.LightningModule):
         def forward(self, x):
             encoded = self._encoder(x)
             decoded_fc = self._decoder_fc(encoded)
-            reshaped = decoded_fc.view(-1, 256, self._conv_encoded_dim, self._conv_encoded_dim, self._conv_encoded_dim)
+            reshaped = decoded_fc.view(-1, 64, 8, 8, 8)
             return self._decoder(reshaped)
 
     def __init__(self, voxel_dimension: int, train_set, val_set, test_set, device): # Training and logging
@@ -126,7 +117,7 @@ class VoxelAutoencoder(pl.LightningModule):
                      'test': test_set}
 
         self.model = VoxelAutoencoder.Network(voxel_dimension)
-        self.current_device = device
+        self._device = device
 
     def forward(self, x_in):
         x = self.model(x_in)     
@@ -135,8 +126,20 @@ class VoxelAutoencoder(pl.LightningModule):
     def general_step(self, batch, batch_idx, mode: str):
         target = batch
         prediction = self(target)
-        loss = nn.BCELoss()(prediction, target)
-        self.log(f"{mode}_loss", loss, on_step=True)
+
+        # Give higher weight to False negatives
+        filled_fraction_in_batch = (target.sum() / target.numel()).item()
+        # clamp the fraction, otherwise we start to get many false positives
+        filled_fraction_in_batch = max(0.02, filled_fraction_in_batch)
+        weights = torch.empty(target.shape)
+        weights[target < 0.5] = filled_fraction_in_batch
+        weights[target >= 0.5] = 1 - filled_fraction_in_batch
+        weights = weights.to(self._device)
+
+        loss = nn.BCELoss(reduction="none")(prediction, target)
+        loss = (loss * weights).mean()
+
+        self.log(f"{mode}_loss", loss, on_step=False, on_epoch=True)
         return loss
 
     def training_step(self, batch, batch_idx):
