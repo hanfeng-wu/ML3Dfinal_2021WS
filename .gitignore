@@ -4,8 +4,7 @@ lightning_logs
 Data/shapenetdata/*
 *.out
 Data/shapenetdata
-input_*.obj
-output_*.obj
 .idea
-models/runs/*
+testobj/
+.pth
 
