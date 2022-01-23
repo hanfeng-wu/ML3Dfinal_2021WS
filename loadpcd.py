@@ -49,14 +49,14 @@ for subdir in subdirs[int(start):int(end)]:
         vertices = obj.vertices.view(np.ndarray)
         faces = obj.faces.view(np.ndarray)
 
-    pcd_full = sample_point_cloud(vertices, faces, 40000)
+    pcd_full = sample_point_cloud(vertices, faces, 4000)
     export_pointcloud_to_obj(f'{subdir}/pcd_gt.obj', pcd_full)
-    # for index in range(10):
-    #     depthimg = OpenEXR.InputFile(f"{subdir}/depth000{index}.exr").channel('R')
-    #     depth = np.frombuffer(depthimg, dtype=np.float32)
-    #     rgb2mesh = RGBD2Mesh(depth, 512, 512, depthIntrinsics, depthExtrinsics[index])
-    #     pcd_recon = rgb2mesh.to_pcd(10000)
-    #     export_pointcloud_to_obj(f'{subdir}/pcd_{index}.obj', pcd_recon)
+    for index in range(10):
+        depthimg = OpenEXR.InputFile(f"{subdir}/depth000{index}.exr").channel('R')
+        depth = np.frombuffer(depthimg, dtype=np.float32)
+        rgb2mesh = RGBD2Mesh(depth, 512, 512, depthIntrinsics, depthExtrinsics[index])
+        pcd_recon = rgb2mesh.to_pcd(1000)
+        export_pointcloud_to_obj(f'{subdir}/pcd_{index}.obj', pcd_recon)
     sys.stderr.write(f'{subdir} done \n')
 
 sys.stderr.write(f'all done \n')

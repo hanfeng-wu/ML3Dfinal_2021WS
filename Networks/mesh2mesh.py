@@ -7,7 +7,7 @@ from torch.nn.modules.conv import Conv1d
 
 
 class TNet(nn.Module):
-    def __init__(self, k, numpoints=1024):
+    def __init__(self, k, numpoints=1024, BN=False):
         super().__init__()
         # TODO Add layers: Convolutional k->64, 64->128, 128->1024 with corresponding batch norms and ReLU
         # TODO Add layers: Linear 1024->512, 512->256, 256->k^2 with corresponding batch norms and ReLU
@@ -22,7 +22,6 @@ class TNet(nn.Module):
             #torch.nn.BatchNorm1d(1024),
             torch.nn.ReLU(),
         )
-
         self.linearlayers = nn.Sequential(
             torch.nn.Linear(1024,512),
             #torch.nn.BatchNorm1d(512),
@@ -74,7 +73,7 @@ class PointNetEncoder(nn.Module):
             nn.Conv1d(128,1024,kernel_size=1),
             #torch.nn.BatchNorm1d(1024),
             torch.nn.ReLU(),
-        )      
+        )
 
         self.input_transform_net = TNet(k=3, numpoints=numpoints)
         self.feature_transform_net = TNet(k=64, numpoints=numpoints)
@@ -108,6 +107,36 @@ class PointNetEncoder(nn.Module):
             return x
 
 
+            
+
+# class PointNetDecoder(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.conv1 = nn.Sequential(
+#             nn.Conv1d(1088,512,kernel_size=1),
+#             #torch.nn.BatchNorm1d(512),
+#             torch.nn.ReLU(),
+#             nn.Conv1d(512,256,kernel_size=1),
+#             #torch.nn.BatchNorm1d(256),
+#             torch.nn.ReLU(),
+#             nn.Conv1d(256,128,kernel_size=1),
+#             #torch.nn.BatchNorm1d(128),
+#             torch.nn.ReLU(),
+#         )
+#         self.conv2 = nn.Sequential(
+#             nn.Conv1d(128,128,kernel_size=1),
+#             #torch.nn.BatchNorm1d(128),
+#             torch.nn.ReLU(),
+#             nn.Conv1d(128,3,kernel_size=1)
+#         )
+#         # TODO: Define convolutions, batch norms, and ReLU
+
+#     def forward(self, x):
+#         # TODO: Pass x through all layers, no batch norm or ReLU after the last conv layer
+#         x = self.conv2(self.conv1(x))
+#         x = x.transpose(2, 1).contiguous()
+#         return x
+
 class PointNetDecoder(nn.Module):
     def __init__(self, numpoints=1024):
         super().__init__()
@@ -121,12 +150,14 @@ class PointNetDecoder(nn.Module):
             nn.Linear(1024,numpoints*3)
         )
         self.numpoints = numpoints
-
+    
     def forward(self, x):
         bs = x.shape[0]
         x = self.fc(x)
         x = x.view(bs,3,self.numpoints)
         return x
+
+
 
 
 

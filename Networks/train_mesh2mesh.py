@@ -1,9 +1,11 @@
 from base64 import decode
 from pathlib import Path
-from Networks.mesh2mesh import PointNetEncoder, PointNetDecoder
+from Networks.mesh2mesh import *
 import torch
 from Networks.pointclouddataset import *
 from chamferdist import ChamferDistance
+from Networks.foldingnet import FoldingNetDec
+from Networks.foldingnet import ChamferLoss
 
 
 
@@ -12,7 +14,10 @@ from chamferdist import ChamferDistance
 def train(encoder, decoder, trainloader, valloader, device, config):
 
     # TODO Declare loss and move to specified device
-    loss_criterion = ChamferDistance()
+    loss_criterion = ChamferLoss()
+    #loss_criterion = torch.nn.MSELoss()
+    #loss_criterion = ChamferDistance()
+
 
     # TODO Declare optimizer
     optimizer = torch.optim.Adam([{'params': decoder.parameters()},
@@ -32,6 +37,7 @@ def train(encoder, decoder, trainloader, valloader, device, config):
     train_loss_running = 0.
 
     for epoch in range(config['max_epochs']):
+
         for i, batch in enumerate(trainloader):
             # move batch to device
             batch = batch.to(device)
@@ -55,7 +61,7 @@ def train(encoder, decoder, trainloader, valloader, device, config):
                 
                 
                 
-            loss_total = loss_criterion(recon.permute(0,2,1), batch.permute(0,2,1))
+            loss_total = loss_criterion(recon.permute(0,2,1), batch.permute(0,2,1)).mean()# + loss_criterion_chamfer(recon.permute(0,2,1), batch.permute(0,2,1))
 
             # TODO: compute gradients on loss_total (backward pass)
             loss_total.mean().backward()
@@ -68,11 +74,14 @@ def train(encoder, decoder, trainloader, valloader, device, config):
             iteration = epoch * len(trainloader) + i
 
             if iteration % config['print_every_n'] == (config['print_every_n'] - 1):
-                print(f'[{epoch:03d}/{i:05d}] train_loss: {train_loss_running / config["print_every_n"]:.3f}')
+                print(f'[{epoch:03d}/{i:05d}] train_loss: {train_loss_running / config["print_every_n"]:.10f}')
                 train_loss_running = 0.
 
             # validation evaluation and logging
             if iteration % config['validate_every_n'] == (config['validate_every_n'] - 1):
+
+                torch.save(encoder.state_dict(), f'./models/runs/{config["experiment_name"]}/encoder_overfit.pth')
+                torch.save(decoder.state_dict(), f'./models/runs/{config["experiment_name"]}/decoder_overfit.pth')  
 
                 # set model to eval, important if your network has e.g. dropout or batchnorm layers
                 encoder.eval()
@@ -88,14 +97,14 @@ def train(encoder, decoder, trainloader, valloader, device, config):
                         # TODO: Get prediction scores
                         latent_vector = encoder(batch)
                         recon = decoder(latent_vector)
-                        loss_total_val += loss_criterion(recon.permute(0,2,1), batch.permute(0,2,1)).mean()
+                        loss_total_val += loss_criterion(recon.permute(0,2,1), batch.permute(0,2,1)).mean()#+ loss_criterion_chamfer(recon.permute(0,2,1), batch.permute(0,2,1))
                     
 
                     # TODO: keep track of total / correct / loss_total_val
 
                 
 
-                print(f'[{epoch:03d}/{i:05d}] val_loss: {loss_total_val / len(valloader):.3f}')
+                print(f'[{epoch:03d}/{i:05d}] val_loss: {loss_total_val / len(valloader):.10f}')
 
                 if loss_total_val < best_val:
                     torch.save(encoder.state_dict(), f'./models/runs/{config["experiment_name"]}/encoder_best.pth')
@@ -104,7 +113,8 @@ def train(encoder, decoder, trainloader, valloader, device, config):
 
                 # set model back to train
                 encoder.train()
-                decoder.train()
+                decoder.train()          
+
 
 
 def main(config):
@@ -150,8 +160,9 @@ def main(config):
     )    
 
     # Instantiate model
-    encoder = PointNetEncoder(numpoints=40000)
-    decoder = PointNetDecoder(numpoints=40000)
+    encoder = PointNetEncoder(numpoints=4000)
+    decoder = PointNetDecoder(numpoints=4000)
+    #decoder = FoldingNetDec(200,200)
 
     # Load model if resuming from checkpoint
     if config['resume_ckpt_en'] is not None:
