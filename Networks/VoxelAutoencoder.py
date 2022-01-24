@@ -14,7 +14,7 @@ class VoxelAutoencoder(pl.LightningModule):
         Voxel autoencoder model based on the architecture in this paper: https://arxiv.org/pdf/1608.04236.pdf
         """
 
-        def __init__(self, voxel_dimension: int):
+        def __init__(self):
             """
             voxel_dimension: side length of the input voxels
             """
@@ -23,79 +23,51 @@ class VoxelAutoencoder(pl.LightningModule):
             activation = nn.ELU()
 
             self._encoder = nn.Sequential(
-                torch.nn.Conv3d(in_channels=1, out_channels=2, kernel_size=4, stride=2, padding=1),
-                torch.nn.BatchNorm3d(2),
-                activation,
-
-                torch.nn.Conv3d(in_channels=2, out_channels=4, kernel_size=4, stride=2, padding=1),
-                torch.nn.BatchNorm3d(4),
-                activation,
-
                 # 32
-
-                torch.nn.Conv3d(in_channels=4, out_channels=8, kernel_size=3, stride=1, padding=1),
+                torch.nn.Conv3d(in_channels=1, out_channels=8, kernel_size=3, stride=1, padding=1),
                 torch.nn.BatchNorm3d(8),
                 activation,
-
                 torch.nn.Conv3d(in_channels=8, out_channels=16, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(16),
                 activation,
 
                 # 16
-
                 torch.nn.Conv3d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1),
                 torch.nn.BatchNorm3d(32),
                 activation,
-
                 torch.nn.Conv3d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(64),
                 activation,
 
                 # 8
-                
                 nn.Flatten(),
-                # nn.Linear(fc_features, fc_features),
-                # nn.BatchNorm1d(fc_features),
-                # nn.ReLU(),
-                nn.Linear(8*8*8*64, 8*8*8*4),
-                nn.BatchNorm1d(8*8*8*4),
+                nn.Linear(8*8*8*64, 8*8*8),
+                nn.BatchNorm1d(8*8*8),
                 activation,
-                nn.Linear(8*8*8*4, 512),
+                nn.Linear(8*8*8, 128),
             )
             self._decoder_fc = nn.Sequential(
-                nn.Linear(512, 8*8*8*4),
-                nn.Linear(8*8*8*4, 8*8*8*64),
+                nn.Linear(128, 8*8*8),
+                nn.Linear(8*8*8, 8*8*8*64),
                 nn.BatchNorm1d(8*8*8*64),
                 activation,
             )
             self._decoder = nn.Sequential(
                 # 8
-
                 torch.nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(32),
                 activation,
 
                 # 16
-
                 torch.nn.ConvTranspose3d(in_channels=32, out_channels=16, kernel_size=3, stride=1, padding=1),
                 torch.nn.BatchNorm3d(16),
                 activation,
-
                 torch.nn.ConvTranspose3d(in_channels=16, out_channels=8, kernel_size=4, stride=2, padding=1),
                 torch.nn.BatchNorm3d(8),
                 activation,
 
                 # 32
-
-                torch.nn.ConvTranspose3d(in_channels=8, out_channels=4, kernel_size=3, stride=1, padding=1),
-                torch.nn.BatchNorm3d(4),
-                activation,
-
-                nn.ConvTranspose3d(in_channels=4, out_channels=2, kernel_size=4, stride=2, padding=1),
-                nn.BatchNorm3d(2),
-                activation,
-
-                nn.ConvTranspose3d(in_channels=2, out_channels=1, kernel_size=4, stride=2, padding=1),
+                torch.nn.ConvTranspose3d(in_channels=8, out_channels=1, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm3d(1),
                 nn.Sigmoid()
             )
@@ -109,14 +81,14 @@ class VoxelAutoencoder(pl.LightningModule):
             reshaped = decoded_fc.view(-1, 64, 8, 8, 8)
             return self._decoder(reshaped)
 
-    def __init__(self, voxel_dimension: int, train_set, val_set, test_set, device): # Training and logging
+    def __init__(self, train_set, val_set, test_set, device): # Training and logging
         super().__init__()
 
         self.data = {'train': train_set,
                      'val': val_set,
                      'test': test_set}
 
-        self.model = VoxelAutoencoder.Network(voxel_dimension)
+        self.model = VoxelAutoencoder.Network()
         self._device = device
 
     def forward(self, x_in):
