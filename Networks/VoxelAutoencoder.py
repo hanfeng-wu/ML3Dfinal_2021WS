@@ -11,17 +11,13 @@ class VoxelAutoencoder(pl.LightningModule):
     
     class Network(nn.Module):
         """
-        Voxel autoencoder model based on the architecture in this paper: https://arxiv.org/pdf/1608.04236.pdf
+        Voxel variational autoencoder model based on this paper: https://arxiv.org/pdf/1608.04236.pdf
         """
 
         def __init__(self):
-            """
-            voxel_dimension: side length of the input voxels
-            """
             super().__init__()
 
-            activation = nn.ELU()
-
+            activation = nn.ELU() # tried ReLU, but ELU (as in the paper) give much better results
             self._encoder = nn.Sequential(
                 # 32
                 torch.nn.Conv3d(in_channels=1, out_channels=8, kernel_size=3, stride=1, padding=1),
@@ -44,8 +40,14 @@ class VoxelAutoencoder(pl.LightningModule):
                 nn.Linear(8*8*8*64, 8*8*8),
                 nn.BatchNorm1d(8*8*8),
                 activation,
-                nn.Linear(8*8*8, 128),
             )
+
+            self._fc_mean = nn.Linear(8*8*8, 128)
+            self._bn_mean = nn.BatchNorm1d(128)
+            self._fc_std_dev = nn.Linear(8*8*8, 128)
+            self._bn_std_dev = nn.BatchNorm1d(128)
+            # TODO: add L2 regularization
+
             self._decoder_fc = nn.Sequential(
                 nn.Linear(128, 8*8*8),
                 nn.Linear(8*8*8, 8*8*8*64),
@@ -59,7 +61,7 @@ class VoxelAutoencoder(pl.LightningModule):
                 activation,
 
                 # 16
-                torch.nn.ConvTranspose3d(in_channels=32, out_channels=16, kernel_size=3, stride=1, padding=1),
+                torch.nn.Conv3d(in_channels=32, out_channels=16, kernel_size=3, stride=1, padding=1),
                 torch.nn.BatchNorm3d(16),
                 activation,
                 torch.nn.ConvTranspose3d(in_channels=16, out_channels=8, kernel_size=4, stride=2, padding=1),
@@ -67,37 +69,55 @@ class VoxelAutoencoder(pl.LightningModule):
                 activation,
 
                 # 32
-                torch.nn.ConvTranspose3d(in_channels=8, out_channels=1, kernel_size=3, stride=1, padding=1),
+                torch.nn.Conv3d(in_channels=8, out_channels=1, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm3d(1),
                 nn.Sigmoid()
             )
-
-        def _conv_layer_output_dim(self, input_dim: int, kernel_size: int, stride: int, padding: int) -> int:
-            return int((input_dim + 2 * padding - kernel_size) / stride + 1)
         
         def forward(self, x):
+            # encode
             encoded = self._encoder(x)
-            decoded_fc = self._decoder_fc(encoded)
-            reshaped = decoded_fc.view(-1, 64, 8, 8, 8)
-            return self._decoder(reshaped)
+            mean = self._bn_mean(self._fc_mean(encoded))
+            log_std_dev = self._bn_std_dev(self._fc_std_dev(encoded))
+            std_dev = torch.exp(log_std_dev)
+            normal_distribution_0_1 = torch.distributions.Normal(torch.zeros_like(mean), torch.ones_like(std_dev))
+            normal_distribution = torch.distributions.Normal(mean, std_dev)
+            latent_vector = normal_distribution.rsample()
 
-    def __init__(self, train_set, val_set, test_set, device): # Training and logging
+            # decode
+            decoded_fc = self._decoder_fc(latent_vector)
+            reshaped = decoded_fc.view(-1, 64, 8, 8, 8)
+            return self._decoder(reshaped), normal_distribution_0_1, normal_distribution
+
+        def encode(self, x):
+            encoded = self._encoder(x)
+            mean = self._bn_mean(self._fc_mean(encoded))
+            log_std_dev = self._bn_std_dev(self._fc_std_dev(encoded))
+            std_dev = torch.exp(log_std_dev)
+            normal_distribution = torch.distributions.Normal(mean, std_dev)
+            latent_vector = normal_distribution.rsample()
+            return latent_vector
+
+    def __init__(self, train_set, val_set, test_set, device, kl_divergence_scale = 0.1):
         super().__init__()
 
-        self.data = {'train': train_set,
+        self._data = {'train': train_set,
                      'val': val_set,
                      'test': test_set}
 
-        self.model = VoxelAutoencoder.Network()
+        self._model = VoxelAutoencoder.Network()
         self._device = device
+        self._kl_divergence_scale = kl_divergence_scale
 
-    def forward(self, x_in):
-        x = self.model(x_in)     
-        return x
+    def forward(self, x):
+        return self._model(x)[0]   
+
+    def encode(self, x):
+        return self._model.encode(x)
         
     def general_step(self, batch, batch_idx, mode: str):
         target = batch
-        prediction = self(target)
+        prediction, normal_distribution_0_1, normal_distribution = self._model(target)
 
         # Give higher weight to False negatives
         filled_fraction_in_batch = (target.sum() / target.numel()).item()
@@ -108,9 +128,15 @@ class VoxelAutoencoder(pl.LightningModule):
         weights[target >= 0.5] = 1 - filled_fraction_in_batch
         weights = weights.to(self._device)
 
-        loss = nn.BCELoss(reduction="none")(prediction, target)
-        loss = (loss * weights).mean()
+        reconstruction_loss = nn.BCELoss(reduction="none")(prediction, target)
+        reconstruction_loss = (reconstruction_loss * weights).mean()
 
+        kl_divergence = torch.distributions.kl_divergence(normal_distribution, normal_distribution_0_1).mean()
+
+        loss = kl_divergence * self._kl_divergence_scale + reconstruction_loss
+
+        self.log(f"{mode}_reconstruction_loss", reconstruction_loss, on_step=False, on_epoch=True)
+        self.log(f"{mode}_kl_divergence", kl_divergence, on_step=False, on_epoch=True)
         self.log(f"{mode}_loss", loss, on_step=False, on_epoch=True)
         return loss
 
@@ -125,13 +151,13 @@ class VoxelAutoencoder(pl.LightningModule):
         loss = self.general_step(batch, batch_idx, "test")
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['train'], shuffle=True, batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], shuffle=True, batch_size=16)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['train'], batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], batch_size=16)
 
     def test_dataloader(self):
-        return torch.utils.data.DataLoader(self.data['train'], batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], batch_size=16)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), 0.01)
+        return torch.optim.Adam(self._model.parameters(), lr=0.01)
