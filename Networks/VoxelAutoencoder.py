@@ -151,13 +151,13 @@ class VoxelAutoencoder(pl.LightningModule):
         loss = self.general_step(batch, batch_idx, "test")
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self._data['train'], shuffle=True, batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], shuffle=True, batch_size=64, num_workers=0)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self._data['train'], batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], batch_size=64, num_workers=0)
 
     def test_dataloader(self):
-        return torch.utils.data.DataLoader(self._data['train'], batch_size=16)
+        return torch.utils.data.DataLoader(self._data['train'], batch_size=64, num_workers=0)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self._model.parameters(), lr=0.001, weight_decay=0.001)

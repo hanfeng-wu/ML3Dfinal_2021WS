@@ -67,7 +67,7 @@ class ShapeNetVoxelData(torch.utils.data.Dataset):
         :return: length of the dataset
         """
         if self._overfit:
-            return 16
+            return 64
         return len(self._model_paths)
 
     @staticmethod
