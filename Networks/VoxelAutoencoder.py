@@ -122,7 +122,7 @@ class VoxelAutoencoder(pl.LightningModule):
         # Give higher weight to False negatives
         filled_fraction_in_batch = (target.sum() / target.numel()).item()
         # clamp the fraction, otherwise we start to get many false positives
-        filled_fraction_in_batch = max(0.02, filled_fraction_in_batch)
+        filled_fraction_in_batch = max(0.03, filled_fraction_in_batch)
         weights = torch.empty(target.shape)
         weights[target < 0.5] = filled_fraction_in_batch
         weights[target >= 0.5] = 1 - filled_fraction_in_batch
@@ -160,4 +160,4 @@ class VoxelAutoencoder(pl.LightningModule):
         return torch.utils.data.DataLoader(self._data['train'], batch_size=16)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self._model.parameters(), lr=0.01)
+        return torch.optim.Adam(self._model.parameters(), lr=0.001, weight_decay=0.001)
