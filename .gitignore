@@ -1,2 +1,10 @@
 __pycache__
 lightning_logs
+.ipynb_checkpoints
+Data/shapenetdata/*
+*.out
+Data/shapenetdata
+.idea
+testobj/
+.pth
+

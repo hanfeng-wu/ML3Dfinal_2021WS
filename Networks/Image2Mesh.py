@@ -63,10 +63,8 @@ class Image2Voxel(pl.LightningModule):
         """
         Save model with its parameters to the given path. Conventionally the
         path should end with "*.model".
-
         Inputs:
         - path: path string
         """
         print('Saving model... %s' % path)
         torch.save(self, path)
-
