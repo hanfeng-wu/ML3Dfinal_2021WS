@@ -14,9 +14,9 @@ class VoxelAutoencoder(pl.LightningModule):
         Voxel variational autoencoder model based on this paper: https://arxiv.org/pdf/1608.04236.pdf
         """
 
-        def __init__(self):
+        def __init__(self, latent_dim):
             super().__init__()
-
+            self._latent_dim = latent_dim
             activation = nn.ELU() # tried ReLU, but ELU (as in the paper) give much better results
             self._encoder = nn.Sequential(
                 # 32
@@ -42,14 +42,13 @@ class VoxelAutoencoder(pl.LightningModule):
                 activation,
             )
 
-            self._fc_mean = nn.Linear(8*8*8, 128)
-            self._bn_mean = nn.BatchNorm1d(128)
-            self._fc_std_dev = nn.Linear(8*8*8, 128)
-            self._bn_std_dev = nn.BatchNorm1d(128)
-            # TODO: add L2 regularization
+            self._fc_mean = nn.Linear(8*8*8, latent_dim)
+            self._bn_mean = nn.BatchNorm1d(latent_dim)
+            self._fc_std_dev = nn.Linear(8*8*8, latent_dim)
+            self._bn_std_dev = nn.BatchNorm1d(latent_dim)
 
             self._decoder_fc = nn.Sequential(
-                nn.Linear(128, 8*8*8),
+                nn.Linear(latent_dim, 8*8*8),
                 nn.Linear(8*8*8, 8*8*8*64),
                 nn.BatchNorm1d(8*8*8*64),
                 activation,
@@ -98,14 +97,14 @@ class VoxelAutoencoder(pl.LightningModule):
             latent_vector = normal_distribution.rsample()
             return latent_vector
 
-    def __init__(self, train_set, val_set, test_set, device, kl_divergence_scale = 0.1):
+    def __init__(self, train_set, val_set, test_set, device, kl_divergence_scale = 0.1, latent_dim = 128):
         super().__init__()
 
         self._data = {'train': train_set,
                      'val': val_set,
                      'test': test_set}
 
-        self._model = VoxelAutoencoder.Network()
+        self._model = VoxelAutoencoder.Network(latent_dim=latent_dim)
         self._device = device
         self._kl_divergence_scale = kl_divergence_scale
 
