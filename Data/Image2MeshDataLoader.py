@@ -43,7 +43,7 @@ class Image2MeshDataLoader():
         mesh = trimesh.voxel.ops.matrix_to_marching_cubes(voxel)
         label = self._point2vox_(mesh.sample(self.sample_rate),self.voxel_dims)
         label = torch.from_numpy(label.astype(np.uint8))
-        return image.float(),label.long()
+        return image.float(),label.float()
 
     def _point2vox_(self,points,dims=(32,32,32)):
         w,h,d = dims
