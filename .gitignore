@@ -1,5 +1,6 @@
 __pycache__
 lightning_logs
+tb_logs
 .ipynb_checkpoints
 Data/shapenetdata/*
 *.out
@@ -7,4 +8,3 @@ Data/shapenetdata
 .idea
 testobj/
 .pth
-
