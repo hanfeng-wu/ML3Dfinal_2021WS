@@ -14,15 +14,15 @@ class Image2Voxel(pl.LightningModule):
     class Network(nn.Module): # the network architecture
         def __init__(self,):
             super().__init__()
-            self.conv2D_1 = nn.Conv2d(3, 16, 3,stride = 4, padding =1) 
-            self.conv2D_2 = nn.Conv2d(16, 32, 3, stride = 4, padding =1) 
-            self.conv2D_3 = nn.Conv2d(32, 32, 3, stride = 4, padding =1) 
+            self.conv2D_1 = nn.Conv2d(3, 128, 3,stride = 4, padding =1) 
+            self.conv2D_2 = nn.Conv2d(128, 256, 3, stride = 4, padding =1) 
+            self.conv2D_3 = nn.Conv2d(256, 512, 3, stride = 4, padding =1) 
             
-            self.linear  = nn.Linear(2*2*32, 8*8*8)
-            self.linear_dims = (8,8,8)
+            self.linear  = nn.Linear(2*2*512, 8*8*8*10)
+            self.linear_dims = (10,8,8,8)
 
-            self.conv2D_4 = nn.Conv2d(8, 16, 3, padding = 1)
-            self.conv2D_5 = nn.Conv2d(16, 32, 3, padding = 1)
+            self.conv2D_4 = nn.Conv3d(10, 128, 3, padding = 1)
+            self.conv2D_5 = nn.Conv3d(128, 1, 3, padding = 1)
 
             self.upsample2 = nn.Upsample(scale_factor = 2)
             self.upsample4 = nn.Upsample(scale_factor = 2)
@@ -48,6 +48,8 @@ class Image2Voxel(pl.LightningModule):
             x = self.upsample2(x)
             x = self.sigmoid(self.conv2D_5(x))
             
+            x = x.view(b,32,32,32)
+
             return x
 
     def __init__(self): # Training and logging
