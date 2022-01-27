@@ -3,7 +3,7 @@ import numpy as np
 from time import time
 
 class Trainer:
-    def __init__(self,model, model_save_path,loss_function, optimizer, batch_size,device,training_dataset, validation_dataset = None, score_function = None):
+    def __init__(self,model, model_save_path,loss_function,  optimizer, batch_size,device,training_dataset, validation_dataset = None, score_function = None):
         self.model = model
         self.loss_function = loss_function
         self.score_function = score_function
@@ -11,11 +11,11 @@ class Trainer:
         self.device = device
         self.model_save_path = model_save_path
         self.training_dataloader = torch.utils.data.DataLoader(
-        training_dataset,   # Datasets return data one sample at a time; Dataloaders use them and aggregate samples into batches
-        batch_size=batch_size,   # The size of batches is defined here
-        shuffle=True,    # Shuffling the order of samples is useful during training to prevent that the network learns to depend on the order of the input data
-        num_workers=0,   # Data is usually loaded in parallel by num_workers
-        pin_memory=True  # This is an implementation detail to speed up data uploading to the GPU
+            training_dataset,   # Datasets return data one sample at a time; Dataloaders use them and aggregate samples into batches
+            batch_size=batch_size,   # The size of batches is defined here
+            shuffle=True,    # Shuffling the order of samples is useful during training to prevent that the network learns to depend on the order of the input data
+            num_workers=0,   # Data is usually loaded in parallel by num_workers
+            pin_memory=True  # This is an implementation detail to speed up data uploading to the GPU
         )
         if(validation_dataset is not None):
             self.validation_dataloader = torch.utils.data.DataLoader(
