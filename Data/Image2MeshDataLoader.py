@@ -35,8 +35,13 @@ class Image2MeshDataLoader():
         label = self.meshes_path + "/"+ self.data[index] + "/model.mat"
         
         image = skio.imread(image)
-        image = resize(image,(self.image_size, self.image_size))[:,:,:3] 
-        image = torch.from_numpy(np.array(image,dtype=np.uint8))
+        image = resize(image,(self.image_size, self.image_size))
+        mask = image[:,:,3]
+        mask = mask/np.max(mask)
+        image = image[:,:,:3]
+        image[mask!=1] = np.max(image)
+        image = image/np.max(image)
+        image = torch.from_numpy(np.array(image,dtype=np.float32))
         image = image.permute(2,0,1)
 
         voxel = sio.loadmat(label)['input'].astype(np.uint8)[0]

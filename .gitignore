@@ -3,6 +3,7 @@ lightning_logs
 tb_logs
 .ipynb_checkpoints
 Data/shapenetdata/*
+Assets/Data
 *.out
 Data/shapenetdata
 .idea
