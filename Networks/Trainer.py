@@ -67,7 +67,7 @@ class Trainer:
                 if(avg_train_loss < best_loss):
                     best_loss = avg_train_loss
                     self.model.save(self.model_save_path)
-            
+
             report = f"""
             avg time per training batch: {avg_time_per_training_batch} seconds 
             avg time per validation batch: {avg_time_per_validation_batch} seconds 
@@ -102,7 +102,6 @@ class Trainer:
             for _ in range(percentage_to_print):
                 print("#",end='')
             ###############################
-
             self.optimizer.zero_grad()
 
             self.move_batch_to_device(batch)
@@ -118,7 +117,6 @@ class Trainer:
             loss.backward()
 
             self.optimizer.step()
-
             losses.append(loss.item())
             scores.append(score)
 

@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import skimage.io as skio
 from skimage.transform import resize
+from skimage.color import rgb2gray
 import trimesh
 import pandas as pd
 from pyntcloud import PyntCloud
@@ -17,39 +18,37 @@ class Image2MeshDataLoader():
     def __init__(self,images_path = "Assets/Data/Image2Mesh/train/images/",meshes_path = "Assets/Data/Image2Mesh/train/meshes/",image_size= 256, voxel_dims = (32,32,32), sample_rate = 4096):
         self.images_path = images_path
         self.meshes_path = meshes_path
-        self.in_size =image_size
         self.data = os.listdir(images_path)
         self.length = len(self.data)
         self.sample_rate =  sample_rate
         self.voxel_dims = voxel_dims
-        self.image_size = 128
+        self.image_size = image_size
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, index):
-        
         available_images = os.listdir( self.images_path + "/"+ self.data[index] + "/")
-        rand_indx = np.random.randint(0,len(available_images))
-        image = self.images_path + "/"+ self.data[index] + "/" + available_images[rand_indx]
-        label = self.meshes_path + "/"+ self.data[index] + "/" + os.listdir( self.meshes_path + "/"+ self.data[index] + "/")[0]
-        
-        image = skio.imread(image)
-        image = resize(image,(self.image_size, self.image_size))
-        image = image/np.max(image)
-        image = torch.from_numpy(np.array(image,dtype=np.float32))
-        image = image.permute(2,0,1)
+        images = []
+        for image_path in available_images:
+            image = self.images_path + "/"+ self.data[index] + "/" + image_path
+            image = skio.imread(image)
+            image = resize(image,(self.image_size, self.image_size))
+            image = np.expand_dims(rgb2gray(image),-1)
+            image = (image/127.5) - 1  ## scale between -1 and 1
+            images.append(image)
+        images = torch.from_numpy(np.array(images)).permute(0,3,1,2)
 
+        label = self.meshes_path + "/"+ self.data[index] + "/" + os.listdir( self.meshes_path + "/"+ self.data[index] + "/")[0]
         with open(label, "rb") as fptr:
             voxel = read_as_3d_array(fptr).astype(np.float32)
-        # voxel = sio.loadmat(label)['input'].astype(np.uint8)[0]
         if(voxel.shape!=self.voxel_dims):
             mesh = trimesh.voxel.ops.matrix_to_marching_cubes(voxel)
             label = self._point2vox_(mesh.sample(self.sample_rate),self.voxel_dims)
             label = torch.from_numpy(label.astype(np.uint8))
         else:
             label = torch.from_numpy(voxel.astype(np.uint8))
-        return image.float(),label.float()
+        return images.float(),label.float()
 
     def _point2vox_(self,points,dims=(32,32,32)):
         w,h,d = dims
